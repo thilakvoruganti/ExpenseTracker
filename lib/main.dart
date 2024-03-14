@@ -1,125 +1,227 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 
+import './widgets/new_transaction_form.dart';
+import './widgets/transaction_list.dart';
+import './models/transaction.dart';
+import './helpers/database_helper.dart';
+
 void main() {
-  runApp(const MyApp());
+  // WidgetsFlutterBinding.ensureInitialized();
+  // SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Personal Expenses',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+        textTheme: TextTheme(
+          headline6: TextStyle(
+            fontFamily: "Quicksand",
+            fontWeight: FontWeight.w300,
+          ),
+        ),
+        primarySwatch: Colors.teal,
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: Colors.amber,
+          foregroundColor: Colors.black,
+        ),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: MyHomePage(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _MyHomePageState createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  List<Transaction> _userTransactions = [];
+  bool _showChart = false;
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  List<Transaction> get _recentTransactions {
+    DateTime lastDayOfPrevWeek = DateTime.now().subtract(Duration(days: 6));
+    lastDayOfPrevWeek = DateTime(
+        lastDayOfPrevWeek.year, lastDayOfPrevWeek.month, lastDayOfPrevWeek.day);
+    return _userTransactions.where((element) {
+      return element.txnDateTime.isAfter(
+        lastDayOfPrevWeek,
+      );
+    }).toList();
+  }
+
+  _MyHomePageState() {
+    _updateUserTransactionsList();
+  }
+
+  void _updateUserTransactionsList() {
+    Future<List<Transaction>> res =
+        DatabaseHelper.instance.getAllTransactions();
+
+    res.then((txnList) {
+      setState(() {
+        _userTransactions = txnList;
+      });
     });
   }
 
+  void _showChartHandler(bool show) {
+    setState(() {
+      _showChart = show;
+    });
+  }
+
+  Future<void> _addNewTransaction(
+      String title, double amount, String category, DateTime chosenDate) async {
+    final newTxn = Transaction(
+      DateTime.now().millisecondsSinceEpoch.toString(),
+      title,
+      amount,
+      category,
+      chosenDate,
+    );
+    int res = await DatabaseHelper.instance.insert(newTxn);
+
+    if (res != 0) {
+      _updateUserTransactionsList();
+    }
+  }
+
+  void _startAddNewTransaction(BuildContext context) {
+    showModalBottomSheet<dynamic>(
+      isScrollControlled: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext bc) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.80,
+          decoration: new BoxDecoration(
+            color: Colors.white,
+            borderRadius: new BorderRadius.only(
+              topLeft: const Radius.circular(25.0),
+              topRight: const Radius.circular(25.0),
+            ),
+          ),
+          child: NewTransactionForm(_addNewTransaction),
+        );
+      },
+    );
+  }
+
+Future<void> _deleteTransaction(String id) async {
+  int parsedId = int.tryParse(id) ?? 0; // Use 0 as default value if parsing fails
+  int res = await DatabaseHelper.instance.deleteTransactionById(parsedId);
+  if (res != 0) {
+    _updateUserTransactionsList();
+  }
+}
+
+
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+    final AppBar myAppBar = AppBar(
+      title: Text(
+        'Personal Expenses',
+        style: TextStyle(
+          fontFamily: "Quicksand",
+          fontWeight: FontWeight.w400,
+          fontSize: 20.0,
+        ),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      actions: <Widget>[
+        IconButton(
+          icon: Icon(Icons.add),
+          onPressed: () => _startAddNewTransaction(context),
+          tooltip: "Add New Transaction",
+        ),
+      ],
+    );
+    MediaQueryData mediaQueryData = MediaQuery.of(context);
+    final bool isLandscape =
+        mediaQueryData.orientation == Orientation.landscape;
+
+    final double availableHeight = mediaQueryData.size.height -
+        myAppBar.preferredSize.height -
+        mediaQueryData.padding.top -
+        mediaQueryData.padding.bottom;
+
+    final double availableWidth = mediaQueryData.size.width -
+        mediaQueryData.padding.left -
+        mediaQueryData.padding.right;
+
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      appBar: myAppBar,
+      body: SingleChildScrollView(
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+            if (isLandscape)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "Show Chart",
+                    style: TextStyle(
+                      fontFamily: "Rubik",
+                      fontSize: 16.0,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    activeColor: Colors.amber[700],
+                    value: _showChart,
+                    onChanged: (value) => _showChartHandler(value),
+                  ),
+                ],
+              ),
+            if (isLandscape)
+              _showChart
+                  ? myChartContainer(
+                      height: availableHeight * 0.8,
+                      width: 0.6 * availableWidth)
+                  : myTransactionListContainer(
+                      height: availableHeight * 0.8,
+                      width: 0.6 * availableWidth),
+            if (!isLandscape)
+              myChartContainer(
+                  height: availableHeight * 0.3, width: availableWidth),
+            if (!isLandscape)
+              myTransactionListContainer(
+                  height: availableHeight * 0.7, width: availableWidth),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: Platform.isIOS
+          ? Container()
+          : FloatingActionButton(
+              child: Icon(Icons.add),
+              tooltip: "Add New Transaction",
+              onPressed: () => _startAddNewTransaction(context),
+            ),
     );
   }
+
+  Widget myChartContainer({required double height, required double width}) {
+    return Container(
+      height: height,
+      width: width,
+    );
+  }
+
+  Widget myTransactionListContainer({required double height, required double width}) {
+    return Container(
+      height: height,
+      width: width,
+      child: TransactionList(_userTransactions, _deleteTransaction),
+    );
+  }
+
 }
